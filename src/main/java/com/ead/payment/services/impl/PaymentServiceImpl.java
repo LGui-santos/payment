@@ -1,14 +1,18 @@
 package com.ead.payment.services.impl;
 
+import com.ead.payment.dtos.PaymentCommandDto;
 import com.ead.payment.dtos.PaymentRequestDto;
 import com.ead.payment.enums.PaymentControl;
 import com.ead.payment.models.CreditCardModel;
 import com.ead.payment.models.PaymentModel;
 import com.ead.payment.models.UserModel;
+import com.ead.payment.publishers.PaymentCommandPublisher;
 import com.ead.payment.repositories.CreditCardRepository;
 import com.ead.payment.repositories.PaymentRepository;
 import com.ead.payment.services.PaymentService;
 import jakarta.transaction.Transactional;
+import lombok.extern.log4j.Log4j2;
+import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,15 +24,18 @@ import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
 
+@Log4j2
 @Service
 public class PaymentServiceImpl implements PaymentService {
 
     private final CreditCardRepository creditCardRepository;
     private final PaymentRepository paymentRepository;
+    private final PaymentCommandPublisher paymentCommandPublisher;
 
-    public PaymentServiceImpl(CreditCardRepository creditCardRepository, PaymentRepository paymentRepository) {
+    public PaymentServiceImpl(CreditCardRepository creditCardRepository, PaymentRepository paymentRepository, PaymentCommandPublisher paymentCommandPublisher) {
         this.creditCardRepository = creditCardRepository;
         this.paymentRepository = paymentRepository;
+        this.paymentCommandPublisher = paymentCommandPublisher;
     }
 
     @Transactional
@@ -52,7 +59,15 @@ public class PaymentServiceImpl implements PaymentService {
         paymentModel.setUser(userModel);
         paymentRepository.save(paymentModel);
 
-        //send request to queue
+        try {
+            var paymentCommandDto = new PaymentCommandDto();
+            paymentCommandDto.setUserId(userModel.getUserId());
+            paymentCommandDto.setPaymentId(paymentModel.getPaymentId());
+            paymentCommandDto.setCardId(creditCardModel.getCardId());
+            paymentCommandPublisher.publishPaymentCommand(paymentCommandDto);
+        } catch (Exception e) {
+            log.warn("Error sending payment command!");
+        }
         return paymentModel;
     }
 
