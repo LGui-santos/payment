@@ -9,10 +9,11 @@ import com.ead.payment.models.UserModel;
 import com.ead.payment.publishers.PaymentCommandPublisher;
 import com.ead.payment.repositories.CreditCardRepository;
 import com.ead.payment.repositories.PaymentRepository;
+import com.ead.payment.repositories.UserRepository;
 import com.ead.payment.services.PaymentService;
+import com.ead.payment.services.PaymentStripeService;
 import jakarta.transaction.Transactional;
 import lombok.extern.log4j.Log4j2;
-import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,11 +32,15 @@ public class PaymentServiceImpl implements PaymentService {
     private final CreditCardRepository creditCardRepository;
     private final PaymentRepository paymentRepository;
     private final PaymentCommandPublisher paymentCommandPublisher;
+    private final UserRepository userRepository;
+    private final PaymentStripeService paymentStripeService;
 
-    public PaymentServiceImpl(CreditCardRepository creditCardRepository, PaymentRepository paymentRepository, PaymentCommandPublisher paymentCommandPublisher) {
+    public PaymentServiceImpl(CreditCardRepository creditCardRepository, PaymentRepository paymentRepository, PaymentCommandPublisher paymentCommandPublisher, UserRepository userRepository, PaymentStripeService paymentStripeService) {
         this.creditCardRepository = creditCardRepository;
         this.paymentRepository = paymentRepository;
         this.paymentCommandPublisher = paymentCommandPublisher;
+        this.userRepository = userRepository;
+        this.paymentStripeService = paymentStripeService;
     }
 
     @Transactional
@@ -84,5 +89,15 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public Optional<PaymentModel> findPaymentByUser(UUID userId, UUID paymentId) {
         return paymentRepository.findPaymentByUser(userId, paymentId);
+    }
+
+    @Transactional
+    @Override
+    public void makePayment(PaymentCommandDto paymentCommandDto) {
+        var paymentModel = paymentRepository.findById(paymentCommandDto.getPaymentId()).get();
+        var userModel = userRepository.findById(paymentCommandDto.getUserId()).get();
+        var creditCardModel = creditCardRepository.findById(paymentCommandDto.getCardId()).get();
+
+        PaymentModel paymentModel1 = paymentStripeService.processStripePayment(paymentModel, creditCardModel);
     }
 }
